@@ -73,8 +73,13 @@ infer env (Pair t1 t2) = do
           t <- infer env t1
           s <- infer env t2
           return $ t :* s
-infer env (Fst (Pair t1 t2)) = infer env t1
-infer env (Snd (Pair t1 t2)) = infer env t2
+infer env (Fst p) = do
+        (t :* _) <- infer env p
+        return t
+infer env (Snd p) = do
+        (_ :* t) <- infer env p
+        return t
+infer env _ = Nothing
 
 
 infer0 :: Term -> Maybe Type
@@ -121,7 +126,7 @@ isValue :: Term -> Bool
 isValue Fls = True
 isValue Tru = True
 isValue Lmb{} = True
-isValue Pair{} = True
+isValue (Pair x y) = isValue x && isValue y
 isValue _ = False
 
 betaRuleDB :: Term -> Term
@@ -145,24 +150,17 @@ oneStep (Let s t1 t2)           = case (oneStep t1) of
                                   Just x -> Just $ Let s x t2
 oneStep (t1 :@: t2) =  fmap (:@: t2) (oneStep t1)
 
-oneStep (Fst (Pair t1 t2)) | isValue t1     = Just t1
-oneStep (Fst (Pair t1 t2))      = case (oneStep t1) of
-                                  Nothing -> Nothing
-                                  Just x -> Just $ Fst (Pair x t2)
-oneStep (Snd (Pair t1 t2)) | isValue t1  = Just t2
-oneStep (Snd (Pair t1 t2))      = case (oneStep t2) of
-                                  Nothing -> Nothing
-                                  Just x -> Just $ Snd (Pair t1 x)
-
+oneStep (Fst (Pair t1 t2)) | isValue t1 && isValue t2   = Just t1
+oneStep (Fst x)      = Fst <$> oneStep x
+oneStep (Snd (Pair t1 t2)) | isValue t1 && isValue t2  = Just t2
+oneStep (Snd x)      = Snd <$> oneStep x
 oneStep (Pair t1 t2) | isValue t1 = case (oneStep t2) of
                                   Nothing -> Nothing
                                   Just x -> Just $ Pair t1 x
-oneStep (Pair t1 t2) = case (oneStep t1) of
-                                  Nothing -> Nothing
-                                  Just x -> Just $ Pair x t2
+
+oneStep (Pair x y) = flip Pair y <$> oneStep x
 
 oneStep _ = Nothing
-
 
 
 whnf :: Term -> Term
