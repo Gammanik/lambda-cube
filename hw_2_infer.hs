@@ -51,6 +51,14 @@ newtype Env = Env [(Symb,Type)]
 (!!?) :: Env -> Int -> Maybe Type
 (Env l) !!? i = Just $ snd $ l !! i
 
+checkPat :: Pat -> Type -> Maybe Env
+checkPat (PVar v) t = Just $ Env [(v, t)]
+checkPat (PPair p1 p2) (t1 :* t2) = do
+  Env e <- checkPat p1 t1
+  Env e' <- checkPat p2 t2
+  return $ Env $ e' ++ e
+checkPat _ _ = Nothing
+
 infer :: Env -> Term -> Maybe Type
 infer env Fls = Just Boo
 infer env Tru = Just Boo
@@ -65,10 +73,10 @@ infer (Env e) (Lmb s tp t1) = case (infer (Env ((s, tp) : e)) t1) of
             Just x -> Just $ tp :-> x
 infer env t@(Idx n) = env !!? n
 
-infer (Env e) (Let (PVar s) t1 t2) = do
-          t <- infer (Env e) t1
-          s' <- infer (Env ((s, t) : e)) t2
-          return s'
+infer (Env e) (Let p t1 t2) = do
+          t' <- infer (Env e) t1
+          Env e' <- checkPat p t'
+          infer (Env $ e' ++ e) t2
 
 infer env (t1 :@: t2) = do
           (t :-> s) <- infer env t1
@@ -85,7 +93,6 @@ infer env (Fst p) = do
 infer env (Snd p) = do
         (_ :* t) <- infer env p
         return t
---infer env _ = Nothing
 
 
 infer0 :: Term -> Maybe Type
