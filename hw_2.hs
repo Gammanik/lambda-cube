@@ -53,7 +53,9 @@ shift :: Int -> Term -> Term
 shift n tg = hlp 0 tg
   where hlp v (t1 :@: t2)   = (hlp v t1) :@: (hlp v t2)
         hlp v (Lmb s tp t)  = Lmb s tp (hlp (v + 1) t)
-        hlp v (Let s t1 t2) = Let s (hlp v t1) (hlp (v+1) t2)
+        hlp v (Let p t1 t2) = Let p (hlp v t1) (hlp (v + getSize p) t2)
+          where getSize (PVar v) = 1
+                getSize (PPair p1 p2) = getSize p1 + getSize p2
         hlp v (Idx num) | v <= num = Idx (num + n)
         hlp v (Idx num)     = Idx num
         hlp v (If t1 t2 t3) = If (hlp v t1) (hlp v t2) (hlp v t3)
@@ -79,19 +81,15 @@ substDB j st t = h t
         h (Idx n)           = Idx n
         h (t1 :@: t2)       = (h t1) :@: (h t2)
         h (Lmb s tp t)      = Lmb s tp (substDB (j + 1) (shift 1 st) t)
-        h (Let x t u)       = Let x (h t) (substDB (j + 1) (shift (hlp x) st) u)
-          where hlp x' = 1
+        h (Let p t u)       = Let p (h t) $ substDB (j + getSize p) (shift (getSize p) st) u
+          where getSize (PVar v) = 1
+                getSize (PPair p1 p2) = getSize p1 + getSize p2
         h (If t1 t2 t3)     = If (h t1) (h t2) (h t3)
         h Fls               = Fls
         h Tru               = Tru
         h (Pair t1 t2)      = Pair (h t1) (h t2)
         h (Fst t)           = Fst (h t)
         h (Snd t)           = Snd (h t)
-
---substDB' (Lmb x t u)      = let v = j + 1
---                              in v `seq` Lmb x t $ substDB v (shift 1 s) u
---substDB' (Let x t u)      = let v = j + 1
---                              in v `seq` Let x (substDB' t) $ substDB v (shift 1 s) u
 
 isValue :: Term -> Bool
 isValue Fls = True
@@ -116,13 +114,14 @@ oneStep t@((Lmb s tp t1) :@: x) = case (oneStep x) of
                                   Nothing -> Nothing
                                   Just x1 -> Just $ Lmb s tp t1 :@: x1
 
-oneStep (Let (PVar s) t1 t2) | isValue t1 = Just $ betaRuleDB ((Lmb s Boo t2) :@: t1)
---oneStep (Let p@(PVar s) v t) | isValue v = (match p v) t
+oneStep tr@(Let p v t) | isValue v = makeMatch t <$> match p v
+  -- makeMatch :: Term -> [(Symb,Term)] -> Term
+  where makeMatch = foldr (\(s,v) t -> shift (-1) $ substDB 0 (shift 1 v) t)
 oneStep (Let s t1 t2)           = case (oneStep t1) of
                                   Nothing -> Nothing
                                   Just x -> Just $ Let s x t2
-oneStep (t1 :@: t2) =  fmap (:@: t2) (oneStep t1)
 
+oneStep (t1 :@: t2) =  fmap (:@: t2) (oneStep t1)
 oneStep (Fst (Pair t1 t2)) | isValue t1 && isValue t2   = Just t1
 oneStep (Fst x)      = Fst <$> oneStep x
 oneStep (Snd (Pair t1 t2)) | isValue t1 && isValue t2  = Just t2
@@ -130,9 +129,7 @@ oneStep (Snd x)      = Snd <$> oneStep x
 oneStep (Pair t1 t2) | isValue t1 = case (oneStep t2) of
                                   Nothing -> Nothing
                                   Just x -> Just $ Pair t1 x
-
 oneStep (Pair x y) = flip Pair y <$> oneStep x
-
 oneStep _ = Nothing
 
 
