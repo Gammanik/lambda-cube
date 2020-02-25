@@ -83,6 +83,9 @@ shift n tg = hlp 0 tg
         hlp v (Succ n)      = Succ $ hlp v n
         hlp v (Pred n)      = Pred $ hlp v n
         hlp v (Fix n)       = Fix $ hlp v n
+        hlp v (Inl t tp)    = Inl (hlp v t) tp
+        hlp v (Inr tp t)    = Inr tp $ hlp v t
+        hlp v (Case t x t1 t2) = Case (hlp v t) x (hlp (v + 1) t1) (hlp (v + 1) t2)
         hlp _ t             = t
 
 
@@ -114,6 +117,9 @@ substDB j st t = h t
         h (Succ n)          = Succ $ h n
         h (Pred n)         = Pred $ h n
         h (Fix n)          = Fix $ h n
+        h (Inl x t)        = Inl (h x) t
+        h (Inr t x)        = Inr t $ h x
+        h (Case t x t1 t2) = Case (h t) x (substDB (j + 1) (shift 1 st) t1) (substDB (j + 1) (shift 1 st) t2)
         h t                = t
 
 
@@ -127,6 +133,8 @@ isValue :: Term -> Bool
 isValue Fls   = True
 isValue Tru   = True
 isValue Lmb{} = True
+isValue (Inr ty v) = isValue v
+isValue (Inl v ty) = isValue v
 isValue (Pair x y) = isValue x && isValue y
 isValue t = isNV t
 
@@ -148,7 +156,6 @@ oneStep t@((Lmb s tp t1) :@: x) = case (oneStep x) of
                                   Just x1 -> Just $ Lmb s tp t1 :@: x1
 
 oneStep tr@(Let p v t) | isValue v = makeMatch t <$> match p v
-  -- makeMatch :: Term -> [(Symb,Term)] -> Term
   where makeMatch = foldr (\(s,v) t -> shift (-1) $ substDB 0 (shift 1 v) t)
 oneStep (Let s t1 t2)           = case (oneStep t1) of
                                   Nothing -> Nothing
@@ -185,6 +192,20 @@ oneStep (Fix l@(Lmb _ _ u)) = Just $ substDB 0 (Fix l) u
 oneStep (Fix t)                = case (oneStep t) of
                                   Nothing -> Nothing
                                   Just x -> Just $ Fix x
+
+oneStep (Inl v ty) = case (oneStep v) of
+                      Nothing -> Nothing
+                      Just x -> Just $ Inl x ty
+oneStep (Inr ty v) = case (oneStep v) of
+                     Nothing -> Nothing
+                     Just x -> Just $ Inr ty x
+
+oneStep (Case (Inl v ty) x t1 t2) | isValue v = Just $ substDB 0 v t1
+oneStep (Case (Inr ty v) x t1 t2) | isValue v = Just $ substDB 0 v t2
+oneStep (Case t x t1 t2)                      = case (oneStep t) of
+                                              Nothing -> Nothing
+                                              Just x' -> Just $ Case x' x t1 t2
+
 oneStep _ = Nothing
 
 
