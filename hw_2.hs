@@ -5,11 +5,18 @@ import Control.Monad
 type Symb = String
 infixl 4 :@:
 infixr 3 :->
+infixl 5 :*
 
 data Type = Boo
           | Type :-> Type
           | Type :* Type
     deriving (Read,Show,Eq)
+
+
+data Pat = PVar Symb
+         | PPair Pat Pat
+    deriving (Read,Show,Eq)
+
 
 data Term = Fls
           | Tru
@@ -17,7 +24,7 @@ data Term = Fls
           | Idx Int
           | Term :@: Term
           | Lmb Symb Type Term
-          | Let Symb Term Term
+          | Let Pat Term Term
           | Pair Term Term
           | Fst Term
           | Snd Term
@@ -25,71 +32,21 @@ data Term = Fls
 
 
 instance Eq Term where
-  Fls       == Fls         =  True
-  Tru       == Tru         =  True
-  If b u w  == If b1 u1 w1 =  b == b1 && u == u1 && w == w1
-  Idx m     == Idx m1      =  m == m1
-  (u:@:w)   == (u1:@:w1)   =  u == u1 && w == w1
-  Lmb _ t u == Lmb _ t1 u1 =  t == t1 && u == u1
-  Let _ u w == Let _ u1 w1 =  u == u1 && w == w1
-  _         == _           =  False
+  Fls       == Fls          =  True
+  Tru       == Tru          =  True
+  If b u w  == If b1 u1 w1  =  b == b1 && u == u1 && w == w1
+  Idx m     == Idx m1       =  m == m1
+  (u:@:w)   == (u1:@:w1)    =  u == u1 && w == w1
+  Lmb _ t u == Lmb _ t1 u1  =  t == t1 && u == u1
+  Let p u w == Let p1 u1 w1 =  p == p1 && u == u1 && w == w1
+  Pair u w  == Pair u1 w1   =  u == u1 && w == w1
+  Fst z     == Fst z1       =  z == z1
+  Snd z     == Snd z1       =  z == z1
+  _         == _            =  False
 
 
 newtype Env = Env [(Symb,Type)]
   deriving (Read,Show,Eq)
-
-cntBound :: Term -> Int
-cntBound tg = h' tg 0
-  where h' (Lmb s tp t) cnt = h' t (cnt + 1)
-        h' (t1 :@: t2) cnt = cnt + (h' t1 0) + (h' t2 0)
-        h' _ cnt = cnt
-
-(!!?) :: Env -> Int -> Maybe Type
-(Env l) !!? i = Just $ snd $ l !! i
-
-infer :: Env -> Term -> Maybe Type
-infer env Fls = Just Boo
-infer env Tru = Just Boo
-infer env (If tb t1 t2) = do
-                Boo <- infer env tb
-                t <- infer env t1
-                s <- infer env t2
-                guard $ t == s
-                return t
-infer (Env e) (Lmb s tp t1) = case (infer (Env ((s, tp) : e)) t1) of
-            Nothing -> Nothing
-            Just x -> Just $ tp :-> x
-infer env t@(Idx n) = env !!? n
-infer (Env e) (Let s t1 t2) = do
-          t <- infer (Env e) t1
-          s' <- infer (Env ((s, t) : e)) t2
-          return s'
-infer env (t1 :@: t2) = do
-          (t :-> s) <- infer env t1
-          t' <- infer env t2
-          guard $ t' == t
-          return s
-infer env (Pair t1 t2) = do
-          t <- infer env t1
-          s <- infer env t2
-          return $ t :* s
-infer env (Fst p) = do
-        (t :* _) <- infer env p
-        return t
-infer env (Snd p) = do
-        (_ :* t) <- infer env p
-        return t
-infer env _ = Nothing
-
-
-infer0 :: Term -> Maybe Type
-infer0 = infer $ Env []
-
-
-
-
----------------------------------------------------------------------------------------------------------------
-
 
 
 shift :: Int -> Term -> Term
@@ -107,20 +64,34 @@ shift n tg = hlp 0 tg
         hlp v (Snd t)       = Snd (hlp v t)
 
 
+match :: Pat -> Term -> Maybe [(Symb,Term)]
+match xg tg = h [] xg tg
+  where h l (PVar v) t  | isValue t = Just $ (v, t) : l
+        h l (PPair x y) (Pair x' y') = do
+                   l1 <- match x x'
+                   l2 <- match y y'
+                   return (l1 ++ l2)
+        h l _ _ = Nothing
+
 substDB :: Int -> Term -> Term -> Term
 substDB j st t = h t
   where h (Idx n) | n == j  = st
         h (Idx n)           = Idx n
         h (t1 :@: t2)       = (h t1) :@: (h t2)
         h (Lmb s tp t)      = Lmb s tp (substDB (j + 1) (shift 1 st) t)
-        h (Let x t u)       = let v = j + 1
-                                      in v `seq` Let x (h t) $ substDB v (shift 1 st) u
+        h (Let x t u)       = Let x (h t) (substDB (j + 1) (shift (hlp x) st) u)
+          where hlp x' = 1
         h (If t1 t2 t3)     = If (h t1) (h t2) (h t3)
         h Fls               = Fls
         h Tru               = Tru
-        h (Pair t1 t2)      = Pair (h t1) (h t2) -- todo: should I?
+        h (Pair t1 t2)      = Pair (h t1) (h t2)
         h (Fst t)           = Fst (h t)
         h (Snd t)           = Snd (h t)
+
+--substDB' (Lmb x t u)      = let v = j + 1
+--                              in v `seq` Lmb x t $ substDB v (shift 1 s) u
+--substDB' (Let x t u)      = let v = j + 1
+--                              in v `seq` Let x (substDB' t) $ substDB v (shift 1 s) u
 
 isValue :: Term -> Bool
 isValue Fls = True
@@ -144,7 +115,9 @@ oneStep t@((Lmb s tp t1) :@: x) | isValue x = Just $ betaRuleDB t
 oneStep t@((Lmb s tp t1) :@: x) = case (oneStep x) of
                                   Nothing -> Nothing
                                   Just x1 -> Just $ Lmb s tp t1 :@: x1
-oneStep (Let s t1 t2) | isValue t1 = Just $ betaRuleDB ((Lmb s Boo t2) :@: t1)
+
+oneStep (Let (PVar s) t1 t2) | isValue t1 = Just $ betaRuleDB ((Lmb s Boo t2) :@: t1)
+--oneStep (Let p@(PVar s) v t) | isValue v = (match p v) t
 oneStep (Let s t1 t2)           = case (oneStep t1) of
                                   Nothing -> Nothing
                                   Just x -> Just $ Let s x t2
@@ -167,8 +140,3 @@ whnf :: Term -> Term
 whnf u = case (oneStep u) of
   Nothing -> u
   Just x -> (whnf x)
-
-
-
-
-
