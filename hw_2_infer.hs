@@ -8,6 +8,7 @@ infixr 3 :->
 infixl 5 :*
 
 data Type = Boo
+          | Nat                   -- !!
           | Type :-> Type
           | Type :* Type
     deriving (Read,Show,Eq)
@@ -21,6 +22,10 @@ data Pat = PVar Symb
 data Term = Fls
           | Tru
           | If Term Term Term
+          | Zero                  -- !!
+          | Succ Term             -- !!
+          | Pred Term             -- !!
+          | IsZero Term           -- !!
           | Idx Int
           | Term :@: Term
           | Lmb Symb Type Term
@@ -28,6 +33,7 @@ data Term = Fls
           | Pair Term Term
           | Fst Term
           | Snd Term
+          | Fix Term              -- !
           deriving (Read,Show)
 
 
@@ -35,6 +41,10 @@ instance Eq Term where
   Fls       == Fls          =  True
   Tru       == Tru          =  True
   If b u w  == If b1 u1 w1  =  b == b1 && u == u1 && w == w1
+  Zero      == Zero         =  True    -- !!
+  Succ u    == Succ u1      =  u == u1 -- !!
+  Pred u    == Pred u1      =  u == u1 -- !!
+  IsZero u  == IsZero u1    =  u == u1 -- !!
   Idx m     == Idx m1       =  m == m1
   (u:@:w)   == (u1:@:w1)    =  u == u1 && w == w1
   Lmb _ t u == Lmb _ t1 u1  =  t == t1 && u == u1
@@ -42,6 +52,7 @@ instance Eq Term where
   Pair u w  == Pair u1 w1   =  u == u1 && w == w1
   Fst z     == Fst z1       =  z == z1
   Snd z     == Snd z1       =  z == z1
+  Fix u     == Fix u1       =  u == u1 -- !
   _         == _            =  False
 
 
@@ -93,6 +104,25 @@ infer env (Fst p) = do
 infer env (Snd p) = do
         (_ :* t) <- infer env p
         return t
+
+infer _ Zero = Just Nat
+
+infer e (IsZero n) = do
+  Nat <- infer e n
+  return Boo
+
+infer e (Succ n) = do
+  Nat <- infer e n
+  return Nat
+
+infer e (Pred n) = do
+  Nat <- infer e n
+  return Nat
+
+infer e (Fix f) = do
+  t :-> s <- infer e f
+  True <- return $ s == t
+  return t
 
 
 infer0 :: Term -> Maybe Type
