@@ -1,6 +1,6 @@
 import Control.Applicative
 import Control.Monad
-import Data.List (findIndex)
+import Data.List (find, findIndex)
 
 
 type Symb = String
@@ -54,7 +54,7 @@ shift n tg = hlp 0 tg
         hlp v (Lmb s tp t)  = Lmb s tp (hlp (v + 1) t)
         hlp v (Let p t1 t2) = Let p (hlp v t1) (hlp (v + getSize p) t2)
           where getSize (PVar v) = 1
-                getSize (PRcd ((s,p):ps)) = getSize p + getSize (PRcd ps)
+                getSize (PRcd ((s,p):ps)) = sum $ map (getSize . snd) ps
 
         hlp v (Rcd ts)      = Rcd $ fmap (hlp v) <$> ts
         hlp v (Prj s t)     = Prj s $ (hlp v t)
@@ -88,6 +88,7 @@ isValue :: Term -> Bool
 isValue Fls   = True
 isValue Tru   = True
 isValue Lmb{} = True
+isValue (Rcd []) = True
 isValue (Rcd ((s,v):vs)) = isValue v && isValue (Rcd vs)
 isValue _     = False
 
@@ -130,8 +131,6 @@ oneStep (Let s t1 t2)           = case (oneStep t1) of
                                   Just x -> Just $ Let s x t2
 
 oneStep (t1 :@: t2)             =  fmap (:@: t2) (oneStep t1)
-
-oneStep (Rcd [])                = Nothing
 --oneStep (Rcd ((s, t):l))  = case (oneStep t) of
 --                                  Nothing -> Just $ Rcd $ (s,t): (h $ oneStep $ Rcd l)
 --                                    where h (Just (Rcd x))  = x
@@ -139,22 +138,21 @@ oneStep (Rcd [])                = Nothing
 --                                  Just x -> Just $ Rcd $ (s, x):l
 
 
-oneStep t@(Rcd kvs) = do
-  firstNonValue <- findIndex (not . isValue . snd) kvs
-  let (vs, nvs)  = splitAt (firstNonValue) kvs
-  nvs' <- patch nvs
-  return $ Rcd (vs ++ nvs')
+oneStep t@(Rcd rs) = do
+  el <- findIndex (not . isValue . snd) rs
+  let (vs, nvs)  = splitAt (el) rs
+  res <- h nvs
+  return $ Rcd (vs ++ res)
   where
-    patch []         = Nothing
-    patch ((s,t):ts) = oneStep t >>= \t' -> Just ((s, t') : ts)
+    h []         = Nothing
+    h ((s,t):ts) = oneStep t >>= \t' -> Just ((s, t') : ts)
 
 
-oneStep (Prj s t)               = case (oneStep t) of
-                                  Nothing -> Nothing
-                                  Just x -> Just $ Prj s x
+oneStep (Prj s t@(Rcd rs))
+  | isValue t = fmap snd $ find ((s ==) . fst) rs
+oneStep (Prj s t) = (Prj s) <$> oneStep t
 
 oneStep _ = Nothing
-
 
 
 
