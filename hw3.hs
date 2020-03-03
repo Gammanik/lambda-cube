@@ -43,6 +43,11 @@ newtype Env = Env [(Symb,Type)]
   deriving (Read,Show,Eq)
 ------------------------------------
 
+getSize :: Pat -> Int
+getSize (PVar u)  = 1
+getSize (PRcd rs) = sum $ map (getSize . snd) rs
+
+
 shift :: Int -> Term -> Term
 shift n tg = hlp 0 tg
   where hlp v Fls           = Fls
@@ -53,9 +58,6 @@ shift n tg = hlp 0 tg
         hlp v (Idx num)     = Idx num
         hlp v (Lmb s tp t)  = Lmb s tp (hlp (v + 1) t)
         hlp v (Let p t1 t2) = Let p (hlp v t1) (hlp (v + getSize p) t2)
-          where getSize (PVar v) = 1
-                getSize (PRcd ((s,p):ps)) = sum $ map (getSize . snd) ps
-
         hlp v (Rcd ts)      = Rcd $ fmap (hlp v) <$> ts
         hlp v (Prj s t)     = Prj s $ (hlp v t)
 --        hlp v (Rcd ((s,t):ts)) = Rcd $ [(s, hlp v t)] ++ (h' (v + 1) (Rcd ts))
@@ -75,9 +77,6 @@ substDB j st t = h t
         h (t1 :@: t2)       = (h t1) :@: (h t2)
         h (Lmb s tp t)      = Lmb s tp (substDB (j + 1) (shift 1 st) t)
         h (Let p t u)       = Let p (h t) $ substDB (j + getSize p) (shift (getSize p) st) u
-          where getSize (PVar v) = 1
-                getSize (PRcd ((s,p):ps)) = getSize p + getSize (PRcd ps)
-
         h (Rcd l)           = Rcd $ fmap h <$> l
         h (Prj s t)     = Prj s $ (h t)
         --h t                = t
