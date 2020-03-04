@@ -96,8 +96,11 @@ match :: Pat -> Term -> Maybe [(Symb,Term)]
 match xg tg = h [] xg tg
   where h l (PVar v) t  | isValue t     = Just $ (v, t) : l
         h l (PRcd []) (Rcd []) = Just []
-        h l (PRcd ((s,p):ps)) (Rcd ((s',v):vs)) | isValue v = do
-            l1 <- match p v
+        h l (PRcd []) _   = Just []
+        h l (PRcd ((s,p):ps)) r@(Rcd vs)
+          | isValue r = do
+            (s', v') <- find ((s ==) . fst) vs
+            l1 <- match p v'
             l2 <- match (PRcd ps) (Rcd vs)
             guard $ s == s'
             return (l1 ++ l2)
@@ -159,3 +162,5 @@ whnf :: Term -> Term
 whnf u = case (oneStep u) of
   Nothing -> u
   Just x -> (whnf x)
+
+
