@@ -43,9 +43,10 @@ newtype Env = Env [(Symb, Type)]
 
 checkPat :: Pat -> Type -> Maybe Env
 checkPat (PVar x) t           = Just $ Env [(x, t)]
-checkPat (PRcd []) (TRcd [])  = Just $ Env []
-checkPat (PRcd ((s,p):ps)) (TRcd ((s',v):vs))  = do
-      Env e <- checkPat p v
+checkPat (PRcd []) _          = Just $ Env []
+checkPat (PRcd ((s,p):ps)) (TRcd vs)  = do
+      (s', v') <- find ((s ==) . fst) vs
+      Env e <- checkPat p v'
       Env e' <- checkPat (PRcd ps) (TRcd vs)
       guard $ s == s'
       return $ Env $ e' ++ e
