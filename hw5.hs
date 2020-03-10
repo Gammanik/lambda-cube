@@ -1,3 +1,6 @@
+import Control.Applicative
+
+
 type Symb = String
 
 infixl 4 :@:, :@>
@@ -54,19 +57,15 @@ e ||- (TIdx i) = if i < length e then
                   (TDecl{}) -> True
                   _ -> False)
               else False
-
 e ||- (t :-> t')    = (e ||- t) && (e ||- t')
 e ||- (ForAll s t) = (TDecl s : e) ||- t
 
 
-
-
-t1 = True  == validEnv [VDecl "x" tArr, TDecl "a"]
-t2 = False == validEnv [TDecl "a", VDecl "x" tArr]
-t3 = False == ([] ||- TIdx 0 :-> TIdx 0)
-t4 = True  == ([TDecl "a"] ||- TIdx 0 :-> TIdx 0)
-t5 = True  == ([] ||- ForAll "a" (TIdx 0 :-> TIdx 0))
-
+--t1 = True  == validEnv [VDecl "x" tArr, TDecl "a"]
+--t2 = False == validEnv [TDecl "a", VDecl "x" tArr]
+--t3 = False == ([] ||- TIdx 0 :-> TIdx 0)
+--t4 = True  == ([TDecl "a"] ||- TIdx 0 :-> TIdx 0)
+--t5 = True  == ([] ||- ForAll "a" (TIdx 0 :-> TIdx 0))
 
 
 
@@ -74,12 +73,42 @@ t5 = True  == ([] ||- ForAll "a" (TIdx 0 :-> TIdx 0))
 
 
 
+shiftT :: Int -> Type -> Type
+shiftT n tg = h 0 tg
+  where h v (TIdx i) | v <= i = TIdx $ i + n
+        h v (TIdx i)          = TIdx $ i
+        h v (t :-> t')        = h v t :-> h v t'
+        h v (ForAll s t)      = ForAll s $ h (v + 1) t
+
+
+
+substTT :: Int -> Type -> Type -> Type
+substTT j s (TIdx i) | i == j = s
+substTT j s t@(TIdx i)        = t
+substTT j s (tl :-> tr)  = substTT j s tl :-> substTT j s tr
+substTT j s (ForAll s' t) = ForAll s' $ substTT (j + 1) (shiftT 1 s) t
+
+shiftV :: Int -> Term -> Term
+shiftV val = h 0 where
+  h v (Idx i)      = Idx $ if v <= i then i + val else i
+  h v (tl :@: tr)  = h v tl :@: h v tr
+  h v (tl :@> ty)  = h v tl :@> h' v ty
+  h v (Lmb d@(TDecl idx) t) = Lmb d $ h (v + 1) t
+  h v (Lmb (VDecl x ty) t)  = Lmb (VDecl x $ h' v ty) (h (v + 1) t)
+
+  h' v' (TIdx i) | v' <= i = TIdx $ i + val
+  h' v' (TIdx i)          = TIdx $ i
+  h' v' (t :-> t')        = h' v' t :-> h' v' t'
+  h' v' (ForAll s t)      = ForAll s $ h' (v' + 1) t
 
 
 
 
 
 
+--t1 = (infer0 sa0 == Just (ForAll "a" (TIdx 0) :-> ForAll "b" (TIdx 0)))
+--t2 = (infer0 sa1 == Just (ForAll "a" (TIdx 0 :-> TIdx 0) :-> ForAll "b" (TIdx 0 :-> TIdx 0)))
+--t3 = (infer0 sa2 == Just (ForAll "a" (TIdx 0 :-> TIdx 0) :-> ForAll "a" (TIdx 0 :-> TIdx 0)))
 
 
 
@@ -134,6 +163,3 @@ seven = natAbs $ Idx 1 :@: (Idx 1 :@: (Idx 1 :@: (Idx 1 :@: (Idx 1 :@: (Idx 1 :@
 eight = natAbs $ Idx 1 :@: (Idx 1 :@: (Idx 1 :@: (Idx 1 :@: (Idx 1 :@: (Idx 1 :@: (Idx 1 :@: (Idx 1 :@: Idx 0)))))))
 nine  = natAbs $ Idx 1 :@: (Idx 1 :@: (Idx 1 :@: (Idx 1 :@: (Idx 1 :@: (Idx 1 :@: (Idx 1 :@: (Idx 1 :@: (Idx 1 :@: Idx 0))))))))
 ten   = natAbs $ Idx 1 :@: (Idx 1 :@: (Idx 1 :@: (Idx 1 :@: (Idx 1 :@: (Idx 1 :@: (Idx 1 :@: (Idx 1 :@: (Idx 1 :@: (Idx 1 :@: Idx 0)))))))))
-
-
-
