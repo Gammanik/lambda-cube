@@ -1,4 +1,5 @@
 import Control.Applicative
+import Control.Monad
 
 
 type Symb = String
@@ -71,8 +72,6 @@ e ||- (ForAll s t) = (TDecl s : e) ||- t
 
 
 
-
-
 shiftT :: Int -> Type -> Type
 shiftT n tg = h 0 tg
   where h v (TIdx i) | v <= i = TIdx $ i + n
@@ -103,12 +102,60 @@ shiftV val = h 0 where
 
 
 
+(!!?) :: Env -> Int -> Maybe Decl
+e !!? i = if (0 <= i && i < length e && validEnv e)
+          then Just (e !! i)
+          else Nothing
+
+infer :: Env -> Term -> Maybe Type
+infer e (Idx i)
+  | 0 <= i && i < length e = do
+    (VDecl _ sigma) <- e !!? i
+    return $ shiftT (i + 1) sigma
+
+
+infer e (t1 :@: t2) = do
+  (s :-> t) <- infer e t1
+  s'           <- infer e t2
+  guard $ s == s'
+  return $ t
+
+infer e (Lmb var@(VDecl x t) t') = do
+  guard $ e ||- t
+  tau <- infer (var:e) t'
+  return $ t :-> (shiftT (-1) tau)
+
+
+infer e (t :@> t') = do
+  guard $ e ||- t'
+  (ForAll a s) <- infer e t
+  return $ shiftT (-1) $ substTT 0 (shiftT 1 t') s
+
+
+infer e (Lmb ty@(TDecl a) t) = do
+  s <- infer (ty:e) t
+  return $ ForAll a s
+
+infer _ _ = Nothing
+
+infer0 :: Term -> Maybe Type
+infer0 = infer []
+
+
+t1 = (infer0 sa0 == Just (ForAll "a" (TIdx 0) :-> ForAll "b" (TIdx 0)))
+t2 = (infer0 sa1 == Just (ForAll "a" (TIdx 0 :-> TIdx 0) :-> ForAll "b" (TIdx 0 :-> TIdx 0)))
+t3 = (infer0 sa2 == Just (ForAll "a" (TIdx 0 :-> TIdx 0) :-> ForAll "a" (TIdx 0 :-> TIdx 0)))
 
 
 
---t1 = (infer0 sa0 == Just (ForAll "a" (TIdx 0) :-> ForAll "b" (TIdx 0)))
---t2 = (infer0 sa1 == Just (ForAll "a" (TIdx 0 :-> TIdx 0) :-> ForAll "b" (TIdx 0 :-> TIdx 0)))
---t3 = (infer0 sa2 == Just (ForAll "a" (TIdx 0 :-> TIdx 0) :-> ForAll "a" (TIdx 0 :-> TIdx 0)))
+
+
+
+
+
+
+
+
 
 
 
