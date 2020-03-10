@@ -150,7 +150,39 @@ t3 = (infer0 sa2 == Just (ForAll "a" (TIdx 0 :-> TIdx 0) :-> ForAll "a" (TIdx 0 
 
 
 
+substVV :: Int -> Term -> Term -> Term
+substVV v s (Idx i) | i == v   = s
+substVV v s u@(Idx i)   = u
+substVV v s (t1 :@: t2) = substVV v s t1 :@: substVV v s t2
+substVV v s (t1 :@> ty) = substVV v s t1 :@> ty
+substVV v s (Lmb d t) = Lmb d $ substVV (v + 1) (shiftV 1 s) t
 
+
+substTV :: Int -> Type -> Term -> Term
+substTV _ _   u@(Idx _)            = u
+substTV i ta (t1 :@: t2)          = substTV i ta t1 :@: substTV i ta t2
+substTV i ta (t1 :@> ty)          = substTV i ta t1 :@> substTT i ta ty
+substTV i ta (Lmb (VDecl x ty) t) = Lmb (VDecl x $ substTT i ta ty) (substTV (i + 1) (shiftT 1 ta) t)
+substTV i ta (Lmb decl t)         = Lmb decl $ substTV (i + 1) (shiftT 1 ta) t
+
+oneStep :: Term -> Maybe Term
+oneStep (Lmb d t)               = Lmb d <$> oneStep t
+oneStep (Lmb (VDecl{}) t :@: s) = Just $ shiftV (-1) $ substVV 0 (shiftV 1 s) t
+oneStep (Lmb (TDecl{}) t :@> s) = Just $ shiftV (-1) $ substTV 0 (shiftT 1 s) t
+oneStep (tl :@: tr)             = (:@: tr) <$> oneStep tl <|> (tl :@:) <$> oneStep tr
+oneStep (tl :@> tr)             = (:@> tr) <$> oneStep tl
+oneStep _                       = Nothing
+
+
+nf :: Term -> Term
+nf u = case (oneStep u) of
+  Nothing -> u
+  Just x -> (nf x)
+
+--nf :: Term -> Term
+--nf t
+--  | Just next <- oneStep t = nf next
+--  | Nothing   <- oneStep t = t
 
 
 
