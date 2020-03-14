@@ -1,5 +1,5 @@
 import Data.List (find, delete, intersectBy)
-import qualified Data.Map.Strict as M
+import qualified Data.Map.Strict as Mp
 import Control.Monad (join)
 
 

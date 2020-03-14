@@ -179,10 +179,23 @@ nf u = case (oneStep u) of
   Nothing -> u
   Just x -> (nf x)
 
---nf :: Term -> Term
---nf t
---  | Just next <- oneStep t = nf next
---  | Nothing   <- oneStep t = t
+
+
+isZero, suc, plus, mult, power :: Term
+isZero = lV "n" natT $ lT "a" $ (Idx 1 :@> (TIdx 0 :-> (TIdx 0 :-> TIdx 0))) :@:
+    (lV "x" (TIdx 0 :-> (TIdx 0 :-> TIdx 0)) $ fls :@> TIdx 1) :@: (tru :@> TIdx 0)
+
+suc = lV "n" natT $ lT "a" $ lV "s" tArr $ lV "z" (TIdx 1)
+    $ (Idx 1) :@: ((Idx 3 :@> TIdx 2) :@: Idx 1 :@: Idx 0)
+
+plus = lV "n" natT $ lV "m" natT $ lT "a" $ lV "s" tArr $ lV "z" (TIdx 1) $
+  (Idx 4 :@> TIdx 2) :@: (Idx 1) :@: ((Idx 3 :@> TIdx 2) :@: Idx 1 :@: Idx 0)
+
+mult = lV "n" natT $ lV "n1" natT $ lT "a"
+  $ lV "n2" tArr $ (Idx 3 :@> TIdx 1) :@: (Idx 2 :@> TIdx 1 :@: Idx 0)
+
+power = lV "n" natT $ lV "n1" natT $ lT "t" $ lV "n2" tArr $ lV "n3" (TIdx 1) $
+  ((Idx 3 :@> (TIdx 2 :-> TIdx 2)) :@: (Idx 4 :@> TIdx 2)) :@: (Idx 1) :@: (Idx 0)
 
 
 
