@@ -70,7 +70,7 @@ validEnv ((VDecl _ t):ds) = (ds ||- t) && (validEnv ds)
 
 
 (||-) :: Env -> Type -> Bool
-e ||- (TIdx i) = if i < length e then
+e ||- (TIdx i) = if i < length e && i >= 0 then
               (case (e !! i) of
                   (TDecl{}) -> True
                   _ -> False)
