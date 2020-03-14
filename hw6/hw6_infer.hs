@@ -140,3 +140,83 @@ infer _ _ = Nothing
 
 infer0 :: Term -> Maybe Type
 infer0 = infer []
+
+
+
+
+
+
+
+shiftV :: Int -> Term -> Term
+shiftV val = h 0 where
+  h v (Idx i)      = Idx $ if v <= i then i + val else i
+  h v (tl :@: tr)  = h v tl :@: h v tr
+  h v (tl :@> ty)  = h v tl :@> h' v ty
+  h v (Lmb d@(TDecl idx) t) = Lmb d $ h (v + 1) t
+  h v (Lmb (VDecl x ty) t)  = Lmb (VDecl x $ h' v ty) (h (v + 1) t)
+
+  h v (As (ty, t) s)    = (h' v ty, h v t) `As` (h' v s)
+  h lvl (Let sp t1 t2)  = Let sp (h lvl t1) (h (lvl + 2) t2)
+
+  h' v' (TIdx i) | v' <= i = TIdx $ i + val
+  h' v' (TIdx i)          = TIdx $ i
+  h' v' (t :-> t')        = h' v' t :-> h' v' t'
+  h' v' (ForAll s t)      = ForAll s $ h' (v' + 1) t
+  h' v' (Exists s t)      = Exists s $ h' (v' + 1) t
+
+
+
+substVV :: Int -> Term -> Term -> Term
+substVV v s (Idx i) | i == v  = s
+substVV v s u@(Idx i)         = u
+substVV v s (t1 :@: t2)       = substVV v s t1 :@: substVV v s t2
+substVV v s (t1 :@> ty)       = substVV v s t1 :@> ty
+substVV v s (Lmb d t)         = Lmb d $ substVV (v + 1) (shiftV 1 s) t
+substVV v s (As (ty, t) sg)   = (ty, substVV v s t) `As` sg
+substVV v s (Let d t1 t2)     =
+  Let d (substVV v s t1) (substVV (v + 2) (shiftV 2 s) t2)
+
+
+
+
+substTV :: Int -> Type -> Term -> Term
+substTV _ _   u@(Idx _)            = u
+substTV i ta (t1 :@: t2)          = substTV i ta t1 :@: substTV i ta t2
+substTV i ta (t1 :@> ty)          = substTV i ta t1 :@> substTT i ta ty
+substTV i ta (Lmb (VDecl x ty) t) = Lmb (VDecl x $ substTT i ta ty) (substTV (i + 1) (shiftT 1 ta) t)
+substTV i ta (Lmb decl t)         = Lmb decl $ substTV (i + 1) (shiftT 1 ta) t
+substTV i ta (As (ty, t) sg)      = (substTT i ta ty, substTV i ta t) `As` (substTT i ta sg)
+substTV i ta (Let def t1 t2)      = Let def (substTV i ta t1) (substTV (i + 2) (shiftT 2 ta) t2)
+
+
+
+isNF :: Term -> Bool
+isNF (Lmb _ t) = isNF t
+isNF (As (_, t)  _) = isNF t
+isNF (Idx _) = True
+isNF (t1 :@: t2) = isNF t1 && isNF t2
+isNF (t1 :@> t2) = isNF t1
+isNF _ = False
+
+
+oneStep :: Term -> Maybe Term
+oneStep (Lmb d t)               = Lmb d <$> oneStep t
+oneStep (Lmb (VDecl{}) t :@: s) = Just $ shiftV (-1) $ substVV 0 (shiftV 1 s) t
+oneStep (Lmb (TDecl{}) t :@> s) = Just $ shiftV (-1) $ substTV 0 (shiftT 1 s) t
+oneStep (tl :@: tr)             = (:@: tr) <$> oneStep tl <|> (tl :@:) <$> oneStep tr
+oneStep (tl :@> tr)             = (:@> tr) <$> oneStep tl
+
+oneStep (As (ty, t) sigma)      = (\t' -> (ty, t') `As` sigma) <$> oneStep t
+oneStep (Let _ ((ty, t) `As` _) t2) | isNF t
+  = Just $ shiftV (-1) $ substTV 0 (shiftT 1 ty) $
+    shiftV (-1) $ substVV 0 (shiftV 2 t) $ t2
+oneStep (Let def t1 t2)           = (\t' -> Let def t' t2) <$> oneStep t1
+
+oneStep _                       = Nothing
+
+
+nf :: Term -> Term
+nf u = case (oneStep u) of
+  Nothing -> u
+  Just x -> (nf x)
+
